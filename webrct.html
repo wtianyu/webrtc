@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+<style>
+    .buttonwy {
+        border: none;
+        color: white;
+        overflow: hidden;
+        margin: 1rem;
+        padding: 0;
+        text-transform: uppercase;
+        width: 150px;
+        height: 40px;
+        border-radius: 10em;
+        background-color: #426fc5;
+        position: relative;
+        cursor: pointer;
+    }
+    .button2 {
+        background-color: #426fc5;
+    }
+    .other{
+
+    }
+</style>
+</head>
+<body>
+
+    <div style="float:left;display: none" id="messageDiv">
+        <div id="showMessage" style="overflow-y: scroll">
+            <!--<textarea id="showMessage" readonly></textarea>-->
+        </div>
+        <div style="margin-top: 10px;display: inline">
+            <input type="button" class="button2" value="表情"/>
+            <input type="button" class="button2" value="图片"/>
+            <input type="button" class="button2" value="文件"/>
+            <input type="button" class="button2" value="清空"/>
+        </div>
+        <div>
+            <textarea id="sendMessage" placeholder="请输入要发送的消息"></textarea>
+            <input type="button" id="sendMessageBtn" onclick="sendMessage(1)" style="background-color: #426fc5;position: absolute" value="发送消息">
+        </div>
+    </div>
+    <div id="videos" style="display: none;">
+        <video id="myvideo" controls="controls" width="300px"  height="250px"  autoplay></video>
+    </div>
+    <div style="width: 100%; text-align: center" id="startDiv">
+        <input type="button" class="buttonwy" onclick="startWebRtc()" value="启动视频连接">
+    </div>
+</body>
+<script type="text/javascript" src="/webrct.js"></script>
+<script>
+    var name;
+    var rtc;
+    function initData() {
+        document.getElementById("messageDiv").style.display="";
+        document.getElementById("showMessage").style.height = screen.height - 300 + "px";
+        document.getElementById("showMessage").style.width = screen.width * 2 / 5 + "px";
+        document.getElementById("sendMessage").style.marginTop = "0px"
+        document.getElementById("sendMessage").style.height = 80 + "px";
+        document.getElementById("sendMessage").style.width = screen.width * 2 / 5 - 80 + "px";
+        document.getElementById("sendMessageBtn").style.marginTop = "2px";
+        document.getElementById("sendMessageBtn").style.marginLeft = "5px";
+        document.getElementById("sendMessageBtn").style.height = 80 + "px";
+        document.getElementById("sendMessageBtn").style.width = 80 + "px";
+    }
+
+    //点击按钮发送文本消息
+    function sendMessage(flagSend){
+
+        var sendMesageText = document.getElementById("sendMessage");
+        var p = document.createElement("p");
+        if(sendMesageText.value.trim()==''){
+            return null;
+        }
+        //广播消息
+        if(flagSend!=1){
+            sendMesageText.value = "大家好,我是 "+name;
+            rtc.broadcast(sendMesageText.value);
+        }else {
+            rtc.broadcast(sendMesageText.value + "#:#" + name);
+        }
+        p.innerText = name+": " + sendMesageText.value;
+        sendMesageText.value="";
+        document.getElementById("showMessage").appendChild(p);
+    }
+    function startWebRtc(){
+          do{
+              name = prompt("请输入你的姓名")
+          }while (name.trim()==''||name=="null");
+        initData();
+       document.getElementById("startDiv").style.display = "none";
+        document.getElementById("sendMessage").value=name;
+        var videos = document.getElementById("videos");
+        videos.style.display="";
+        var webrtc = new WebRTC();
+        rtc = webrtc;
+        //创建本地视频流
+        webrtc.on("connected", function(web_socket) {
+            console.log("请求连接本地视频流...");
+            webrtc.createStream({
+                "video": true,
+                "audio": true
+            });
+        });
+        webrtc.on("stream_created", function(stream) {
+            document.getElementById('myvideo').src = URL.createObjectURL(stream);
+            document.getElementById('myvideo').play();
+            document.getElementById('myvideo').title = name;
+            console.log("本地视频流创建成功...");
+        });
+        webrtc.on("socket_opened", function(web_socket) {
+            console.log("socket连接已打开");
+        });
+        webrtc.on("initOver", function(socketId) {
+            console.log("初始化完毕"+socketId);
+            setTimeout(sendMessage,500);
+        });
+
+        webrtc.on("get_peers", function(web_socket) {
+            console.log("成功获取_peers");
+        });
+        webrtc.on("get_ice_candidate", function(web_socket) {
+            console.log("成功获取get_ice_candidate");
+        });
+        webrtc.on("new_peer", function(web_socket) {
+            console.log("成功获取new_peer");
+        });
+        webrtc.on("get_offer", function(data) {
+            console.log("成功获取get_offer");
+        });
+        webrtc.on("remove_peer", function(web_socket) {
+            console.log("成功获取remove_peer");
+        });
+        webrtc.on("get_answer", function(web_socket) {
+            console.log("成功获取get_answer");
+        });
+        webrtc.on('pc_add_stream', function(stream, socketId) {
+            console.log("接收到其他用户的视频流")
+            var newVideo = document.createElement("video"),
+                id = "other-" + socketId;
+            newVideo.setAttribute("class", "other");
+            newVideo.setAttribute("autoplay", "autoplay");
+            newVideo.setAttribute("id", id);
+            newVideo.setAttribute("controls", "controls");
+            newVideo.setAttribute("width", "300px");
+            newVideo.setAttribute("height", "250px");
+            videos.appendChild(newVideo);
+            webrtc.attachStream(stream, id);
+        });
+        //删除其他用户
+        webrtc.on('remove_peer', function(socketId) {
+            var video = document.getElementById('other-' + socketId);
+            if(video){
+                video.parentNode.removeChild(video);
+            }
+        });
+        //接收到文字信息
+        webrtc.on('data_channel_message', function(channel, socketId, message){
+            var messageArray = message.split("#:#");
+            document.getElementById("other-"+socketId).title = messageArray[messageArray.length-1];
+            var p = document.createElement("p");
+            p.innerText = messageArray[messageArray.length-1] + ": " + messageArray[0];
+            if(messageArray.length==1){
+                document.getElementById("other-"+socketId).title = message.split(" ")[message.split(" ").length-1];
+                p.innerText = message.split(" ")[message.split(" ").length-1]+":"+messageArray[0];
+            }
+            document.getElementById("showMessage").appendChild(p);
+        });
+        //连接WebSocket服务器
+        webrtc.connect("ws:" + window.location.href.substring(window.location.protocol.length).split('#')[0], window.location.hash.slice(1));
+    }
+
+    //原生态:高效率的去除空格函数(第一个循环去除前空格，第二个循环去除后空格)
+    String.prototype.trim = function() {
+        var str = this;
+        whitespace = ' \n\r\t\f\x0b\xa0\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u200b\u2028\u2029\u3000'; //前面有一个空格
+        for (var i = 0, len = str.length; i < len; i++) {
+            if (whitespace.indexOf(str.charAt(i)) === -1) {
+                str = str.substring(i);
+                break;
+            }
+        }
+        for (i = str.length - 1; i >= 0;i--){
+            if (whitespace.indexOf(str.charAt(i)) === -1) {
+                str = str.substring(0, i + 1);
+                break;
+            }
+        }
+        return whitespace.indexOf(str.charAt(0)) === -1 ? str : '';
+    }
+</script>
+
+</html>
